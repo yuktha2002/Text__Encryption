@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Encryption Tool</title>
+    <style>
+        /* General styling */
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #fff;
+            color: #333;
+        }
+        
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            transition: transform 0.3s ease-in-out;
+            border: 2px solid #ff7043;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .container:hover {
+            transform: scale(1.05);
+            border-color: #f57c00;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            color: #ff7043;
+            font-size: 1.8em;
+        }
+        
+        /* Input and textarea styling */
+        input[type="password"],
+        textarea {
+            width: calc(100% - 24px);
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        input[type="password"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #ff7043;
+        }
+        
+        /* Button styling */
+        .buttons {
+            margin-bottom: 15px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 0; /* Changed border-radius to 0 for square shape */
+            background: #ff7043;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s, background 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.1);
+            background: #ff5a36;
+        }
+        
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        /* Output textarea styling */
+        textarea#outputText {
+            width: calc(100% - 24px);
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        /* Pop-up message styling */
+        .popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            padding: 20px;
+            background: #ff7043;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+            font-size: 1em;
+            transition: transform 0.5s ease-in-out;
+            z-index: 10;
+        }
+        
+        .popup.show {
+            transform: translate(-50%, -50%) scale(1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Text Encryption Tool</h1>
+        <input type="password" id="passphrase" placeholder="Enter passphrase" required>
+        <textarea id="inputText" placeholder="Enter text to encrypt or decrypt" required></textarea>
+        <div class="buttons">
+            <button id="encryptBtn">Encrypt</button>
+            <button id="decryptBtn">Decrypt</button>
+        </div>
+        <textarea id="outputText" placeholder="Output" readonly></textarea>
+    </div>
+    
+    <!-- Pop-up message container -->
+    <div id="popup" class="popup"></div>
+
+    <script>
+        // Utility to convert string to ArrayBuffer
+        function strToArrayBuffer(str) {
+            const encoder = new TextEncoder();
+            return encoder.encode(str);
+        }
+
+        // Utility to convert ArrayBuffer to string
+        function arrayBufferToStr(buffer) {
+            const decoder = new TextDecoder();
+            return decoder.decode(buffer);
+        }
+
+        // Derive a key from passphrase and salt using PBKDF2
+        async function deriveKey(passphrase, salt) {
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw",
+                strToArrayBuffer(passphrase),
+                { name: "PBKDF2" },
+                false,
+                ["deriveKey"]
+            );
+
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: salt,
+                    iterations: 100000,
+                    hash: "SHA-256"
+                },
+                keyMaterial,
+                { name: "AES-CBC", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // Encrypt text using AES-CBC
+        async function encryptText() {
+            const passphrase = document.getElementById("passphrase").value;
+            const inputText = document.getElementById("inputText").value;
+            if (!passphrase || !inputText) {
+                alert("Please enter a passphrase and text to encrypt.");
+                return;
+            }
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(16));
+
+            const key = await deriveKey(passphrase, salt);
+
+            const encryptedData = await window.crypto.subtle.encrypt(
+                {
+                    name: "AES-CBC",
+                    iv: iv
+                },
+                key,
+                strToArrayBuffer(inputText)
+            );
+
+            const combinedArray = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
+            combinedArray.set(salt, 0);
+            combinedArray.set(iv, salt.length);
+            combinedArray.set(new Uint8Array(encryptedData), salt.length + iv.length);
+
+            document.getElementById("outputText").value = btoa(String.fromCharCode(...combinedArray));
+            showPopup("SHHHHH We Maintain Your Secret!!");
+        }
+
+        // Decrypt text using AES-CBC
+        async function decryptText() {
+            const passphrase = document.getElementById("passphrase").value;
+            const encryptedText = document.getElementById("inputText").value;
+            if (!passphrase || !encryptedText) {
+                alert("Please enter a passphrase and text to decrypt.");
+                return;
+            }
+
+            const combinedArray = new Uint8Array(atob(encryptedText).split("").map(char => char.charCodeAt(0)));
+            const salt = combinedArray.slice(0, 16);
+            const iv = combinedArray.slice(16, 32);
+            const data = combinedArray.slice(32);
+
+            const key = await deriveKey(passphrase, salt);
+
+            try {
+                const decryptedData = await window.crypto.subtle.decrypt(
+                    {
+                        name: "AES-CBC",
+                        iv: iv
+                    },
+                    key,
+                    data
+                );
+
+                document.getElementById("outputText").value = arrayBufferToStr(decryptedData);
+                showPopup("No More Secrets!!");
+            } catch (error) {
+                alert("Decryption failed. Please check the passphrase and input text.");
+                console.error("Decryption error:", error);
+            }
+        }
+
+        // Show a funky pop-up message
+        function showPopup(message) {
+            const popup = document.getElementById("popup");
+            popup.textContent = message;
+            popup.classList.add("show");
+
+            setTimeout(() => {
+                popup.classList.remove("show");
+            }, 2000);
+        }
+
+        // Event listeners for buttons
+        document.getElementById("encryptBtn").addEventListener("click", encryptText);
+        document.getElementById("decryptBtn").addEventListener("click", decryptText);
+    </script>
+</body>
+</html>
